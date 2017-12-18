@@ -504,6 +504,15 @@ void LArPandoraInput::CreatePandoraMCParticles(const Settings &settings, const M
         const float pZ(particle->Pz(firstT));
         const float E(particle->E(firstT));
 
+        std::vector<pandora::CartesianVector> mcStepPositions;
+        std::vector<pandora::CartesianVector> mcStepMomentas;
+
+        for (unsigned int step = 0; step < particle->NumberTrajectoryPoints(); step++)
+        {
+            mcStepPositions.emplace_back(particle->Vx(step), particle->Vy(step), particle->Vz(step));
+            mcStepMomentas.emplace_back(particle->Px(step), particle->Py(step), particle->Pz(step));
+        }
+
         // Find the source of the mc particle
         int nuanceCode(0);
         const int trackID(particle->TrackId());
@@ -531,6 +540,8 @@ void LArPandoraInput::CreatePandoraMCParticles(const Settings &settings, const M
             mcParticleParameters.m_endpoint = pandora::CartesianVector(endX, endY, endZ);
             mcParticleParameters.m_mcParticleType = pandora::MC_3D;
             mcParticleParameters.m_pParentAddress = (void*)((intptr_t)particle->TrackId());
+            mcParticleParameters.m_mcStepPositions = mcStepPositions;
+            mcParticleParameters.m_mcStepMomentas = mcStepMomentas;
         }
         catch (const pandora::StatusCodeException &)
         {
