@@ -11,6 +11,8 @@
 #include "lardataobj/RecoBase/Track.h"
 #include "lardataobj/RecoBase/Shower.h"
 
+#include "larpandora/LArPandoraObjects/PFParticleMetadata.h"
+
 #include <string>
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -26,6 +28,8 @@ class ConsolidatedPFParticleAnalysisTemplate : public art::EDAnalyzer
 public:
     typedef art::Handle< std::vector<recob::PFParticle> > PFParticleHandle;
     typedef std::map< size_t, art::Ptr<recob::PFParticle> > PFParticleIdMap;
+    typedef std::vector< art::Ptr<larpandoraobj::PFParticleMetadata> > PFParticleMetadataVector;
+    typedef std::map< art::Ptr<recob::PFParticle>, PFParticleMetadataVector > PFParticleMetadataMap;
     typedef std::vector< art::Ptr<recob::PFParticle> > PFParticleVector;
     typedef std::vector< art::Ptr<recob::Track> > TrackVector;
     typedef std::vector< art::Ptr<recob::Shower> > ShowerVector;
@@ -58,24 +62,42 @@ private:
      *  @param  pfParticleHandle the handle for the PFParticle collection
      *  @param  pfParticleMap the mapping from ID to PFParticle
      */
-    void GetPFParticleIdMap(const PFParticleHandle &pfParticleHandle, PFParticleIdMap &pfParticleMap);
+    void GetPFParticleIdMap(const PFParticleHandle &pfParticleHandle, PFParticleIdMap &pfParticleMap) const;
 
     /**
-     * @brief Print out scores in PFParticleMetadata
+     *  @brief  Produce a mapping from PFParticle to a vector of art ptr to PFParticleMetadata objects for fast navigation
      *
-     * @param evt the art event to analyze
-     * @param pfParticleHandle the handle for the PFParticle collection
+     *  @param  evt the art event to analyze
+     *  @param  pfParticleHandle the handle for the PFParticle collection
+     *  @param  pfParticleMetadataMap the mapping from PFParticle to PFParticleMetadata objects
      */
-    void PrintOutScores(const art::Event &evt, const PFParticleHandle &pfParticleHandle) const;
+    void GetPFParticleMetadataMap(const art::Event &evt, const PFParticleHandle &pfParticleHandle, PFParticleMetadataMap &pfParticleMetadataMap) const;
+
+    /**
+     *  @brief Print out scores in PFParticleMetadata
+     *
+     *  @param evt the art event to analyze
+     *  @param pfParticleHandle the handle for the PFParticle collection
+     */
+    void PrintOutScores(const PFParticleMetadataMap &pfParticleMetadataMap) const;
 
     /**
      *  @brief  Produce a mapping from PFParticle ID to the art ptr to the PFParticle itself for fast navigation
      *
      *  @param  pfParticleMap the mapping from ID to PFParticle
+     *  @param  pfParticleMetadataMap the mapping from PFParticle to PFParticleMetadata objects
      *  @param  crParticles a vector to hold the top-level PFParticles reconstructed under the cosmic hypothesis
      *  @param  nuParticles a vector to hold the final-states of the reconstruced neutrino
      */
-    void GetFinalStatePFParticleVectors(const PFParticleIdMap &pfParticleMap, PFParticleVector &crParticles, PFParticleVector &nuParticles);
+    void GetFinalStatePFParticleVectors(const PFParticleIdMap &pfParticleMap, const PFParticleMetadataMap &pfParticleMetadataMap, PFParticleVector &crParticles, PFParticleVector &nuParticles) const;
+
+    /**
+     *  @brief  Determine whether PFParticle is target
+     *
+     *  @param  pParticle in question
+     *  @param  pfParticleMetadataMap the mapping from PFParticle to PFParticleMetadata objects
+     */
+    bool IsTarget(const art::Ptr<recob::PFParticle> pParticle, const PFParticleMetadataVector &pfParticleMetadataVector) const;
 
     /**
      *  @brief  Collect associated tracks and showers to particles in an input particle vector
@@ -92,6 +114,7 @@ private:
     std::string m_trackLabel;           ///< The label for the track producer from PFParticles
     std::string m_showerLabel;          ///< The label for the shower producer from PFParticles
     bool        m_printOutScores;       ///< Option to investigate the associations to scores for PFParticles
+    bool        m_testBeamMode;         ///< Option to run the module in test beam mode
 };
 
 DEFINE_ART_MODULE(ConsolidatedPFParticleAnalysisTemplate)
@@ -109,8 +132,6 @@ DEFINE_ART_MODULE(ConsolidatedPFParticleAnalysisTemplate)
 #include "art/Framework/Services/Optional/TFileDirectory.h"
 #include "canvas/Persistency/Common/FindManyP.h"
 #include "messagefacility/MessageLogger/MessageLogger.h"
-
-#include "larpandora/LArPandoraObjects/PFParticleMetadata.h"
 
 #include "Pandora/PdgTable.h"
 
@@ -132,6 +153,7 @@ void ConsolidatedPFParticleAnalysisTemplate::reconfigure(fhicl::ParameterSet con
     m_trackLabel = pset.get<std::string>("TrackLabel");
     m_showerLabel = pset.get<std::string>("ShowerLabel");
     m_printOutScores = pset.get<bool>("PrintOutScores",true);
+    m_testBeamMode = pset.get<bool>("TestBeamMode",false);
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -150,18 +172,20 @@ void ConsolidatedPFParticleAnalysisTemplate::analyze(const art::Event &evt)
 
     // Produce a map of the PFParticle IDs for fast navigation through the hierarchy
     PFParticleIdMap pfParticleMap;
+    PFParticleMetadataMap pfParticleMetadataMap;
     this->GetPFParticleIdMap(pfParticleHandle, pfParticleMap);
-    
+    this->GetPFParticleMetadataMap(evt, pfParticleHandle, pfParticleMetadataMap);    
+
     /// Investigate scores associated as larpandoraobject::metadata for the PFParticles
     if (m_printOutScores)
-        this->PrintOutScores(evt, pfParticleHandle);
+        this->PrintOutScores(pfParticleMetadataMap);
 
     // Produce two PFParticle vectors containing final-state particles:
     // 1. Particles identified as cosmic-rays - recontructed under cosmic-hypothesis
-    // 2. Daughters of the neutrino PFParticle - reconstructed under the neutrino hypothesis
+    // 2. Daughters of the neutrino or test beam PFParticle - reconstructed under the neutrino hypothesis
     std::vector< art::Ptr<recob::PFParticle> > crParticles;
     std::vector< art::Ptr<recob::PFParticle> > nuParticles;
-    this->GetFinalStatePFParticleVectors(pfParticleMap, crParticles, nuParticles);
+    this->GetFinalStatePFParticleVectors(pfParticleMap, pfParticleMetadataMap, crParticles, nuParticles);
 
     // Use as required!
     // -----------------------------
@@ -175,28 +199,27 @@ void ConsolidatedPFParticleAnalysisTemplate::analyze(const art::Event &evt)
     // Print a summary of the consolidated event
     std::cout << "Consolidated event summary:" << std::endl;
     std::cout << "  - Number of primary cosmic-ray PFParticles   : " << crParticles.size() << std::endl;
-    std::cout << "  - Number of neutrino final-state PFParticles : " << nuParticles.size() << std::endl;
+    std::cout << "  - Number of " << (m_testBeamMode ? "test beam" : "neutrino") << " final-state PFParticles : " << nuParticles.size() << std::endl;
     std::cout << "    ... of which are track-like   : " << tracks.size() << std::endl;
     std::cout << "    ... of which are showers-like : " << showers.size() << std::endl;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void ConsolidatedPFParticleAnalysisTemplate::GetPFParticleIdMap(const PFParticleHandle &pfParticleHandle, PFParticleIdMap &pfParticleMap)
+void ConsolidatedPFParticleAnalysisTemplate::GetPFParticleIdMap(const PFParticleHandle &pfParticleHandle, PFParticleIdMap &pfParticleMap) const
 {
     for (unsigned int i = 0; i < pfParticleHandle->size(); ++i)
     {
         const art::Ptr<recob::PFParticle> pParticle(pfParticleHandle, i);
+
         if (!pfParticleMap.insert(PFParticleIdMap::value_type(pParticle->Self(), pParticle)).second)
-        {
             throw cet::exception("ConsolidatedPFParticleAnalysisTemplate") << "  Unable to get PFParticle ID map, the input PFParticle collection has repeat IDs!";
-        }
     }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 
-void ConsolidatedPFParticleAnalysisTemplate::PrintOutScores(const art::Event &evt, const PFParticleHandle &pfParticleHandle) const
+void ConsolidatedPFParticleAnalysisTemplate::GetPFParticleMetadataMap(const art::Event &evt, const PFParticleHandle &pfParticleHandle, PFParticleMetadataMap &pfParticleMetadataMap) const
 {
     // Get the associations between PFParticles and larpandoraobj::PFParticleMetadata
     art::FindManyP< larpandoraobj::PFParticleMetadata > pfPartToMetadataAssoc(pfParticleHandle, evt, m_pandoraLabel);
@@ -207,12 +230,32 @@ void ConsolidatedPFParticleAnalysisTemplate::PrintOutScores(const art::Event &ev
         if (!pfParticleMetadataList.empty())
         {
             const art::Ptr<recob::PFParticle> pParticle(pfParticleHandle, i);
-            for (unsigned int j=0; j<pfParticleMetadataList.size(); ++j)
+
+            if (!pfParticleMetadataMap.insert(PFParticleMetadataMap::value_type(pParticle, pfParticleMetadataList)).second)
+                throw cet::exception("ConsolidatedPFParticleAnalysisTemplate") << "  Unable to get PFParticle Metadata map, the input PFParticle appears twice!";
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void ConsolidatedPFParticleAnalysisTemplate::PrintOutScores(const PFParticleMetadataMap &pfParticleMetadataMap) const
+{
+    for (const auto &pfParticleToMetaDataIter : pfParticleMetadataMap)
+    {
+        const art::Ptr<recob::PFParticle> pParticle(pfParticleToMetaDataIter.first);
+        const std::vector< art::Ptr<larpandoraobj::PFParticleMetadata> > &pfParticleMetadataList(pfParticleToMetaDataIter.second);
+
+        if (!pfParticleMetadataList.empty())
+        {
+            for (unsigned int j = 0; j < pfParticleMetadataList.size(); ++j)
             {
                 const art::Ptr<larpandoraobj::PFParticleMetadata> &pfParticleMetadata(pfParticleMetadataList.at(j));
                 const pandora::PropertiesMap &pfParticlePropertiesMap(pfParticleMetadata->GetPropertiesMap());
+
                 if (!pfParticlePropertiesMap.empty())
                     std::cout << " Found PFParticle " << pParticle->Self() << " with: " << std::endl;
+
                 for (pandora::PropertiesMap::const_iterator it = pfParticlePropertiesMap.begin(); it != pfParticlePropertiesMap.end(); ++it)
                     std::cout << "  - " << it->first << " = " << it->second << std::endl;
             }
@@ -222,7 +265,7 @@ void ConsolidatedPFParticleAnalysisTemplate::PrintOutScores(const art::Event &ev
 
 //------------------------------------------------------------------------------------------------------------------------------------------
     
-void ConsolidatedPFParticleAnalysisTemplate::GetFinalStatePFParticleVectors(const PFParticleIdMap &pfParticleMap, PFParticleVector &crParticles, PFParticleVector &nuParticles)
+void ConsolidatedPFParticleAnalysisTemplate::GetFinalStatePFParticleVectors(const PFParticleIdMap &pfParticleMap, const PFParticleMetadataMap &pfParticleMetadataMap, PFParticleVector &crParticles, PFParticleVector &nuParticles) const
 {
     for (PFParticleIdMap::const_iterator it = pfParticleMap.begin(); it != pfParticleMap.end(); ++it)
     {
@@ -231,12 +274,11 @@ void ConsolidatedPFParticleAnalysisTemplate::GetFinalStatePFParticleVectors(cons
         // Only look for primary particles
         if (!pParticle->IsPrimary()) continue;
 
-        // Check if this particle is identified as the neutrino
-        const int pdg(pParticle->PdgCode());
-        const bool isNeutrino(std::abs(pdg) == pandora::NU_E || std::abs(pdg) == pandora::NU_MU || std::abs(pdg) == pandora::NU_TAU);
+        // Check if this particle is identified as the neutrino or a test beam particle
+        const bool isTarget(this->IsTarget(pParticle, pfParticleMetadataMap.at(pParticle)));
 
         // All non-neutrino primary particles are reconstructed under the cosmic hypothesis
-        if (!isNeutrino)
+        if (!isTarget)
         {
             crParticles.push_back(pParticle);
             continue;
@@ -244,12 +286,12 @@ void ConsolidatedPFParticleAnalysisTemplate::GetFinalStatePFParticleVectors(cons
 
         // ATTN. We are filling nuParticles under the assumption that there is only one reconstructed neutrino identified per event.
         //       If this is not the case please handle accordingly
-        if (!nuParticles.empty())
+        if (!nuParticles.empty() && !m_testBeamMode)
         {
             throw cet::exception("ConsolidatedPFParticleAnalysisTemplate") << "  This event contains multiple reconstructed neutrinos!";
         }
 
-        // Add the daughters of the neutrino PFParticle to the nuPFParticles vector
+        // Add the daughters of the PFParticle to the nuPFParticles vector
         for (const size_t daughterId : pParticle->Daughters())
         {
             if (pfParticleMap.find(daughterId) == pfParticleMap.end())
@@ -258,6 +300,28 @@ void ConsolidatedPFParticleAnalysisTemplate::GetFinalStatePFParticleVectors(cons
             nuParticles.push_back(pfParticleMap.at(daughterId));
         }
     }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+bool ConsolidatedPFParticleAnalysisTemplate::IsTarget(const art::Ptr<recob::PFParticle> pParticle, const PFParticleMetadataVector &pfParticleMetadataVector) const
+{
+    const std::string property(m_testBeamMode ? "IsTestBeam" : "IsNeutrino");
+
+    if (!pfParticleMetadataVector.empty())
+    {
+        for (unsigned int j = 0; j < pfParticleMetadataVector.size(); ++j)
+        {
+            const art::Ptr<larpandoraobj::PFParticleMetadata> &pfParticleMetadata(pfParticleMetadataVector.at(j));
+            const pandora::PropertiesMap &pfParticlePropertiesMap(pfParticleMetadata->GetPropertiesMap());
+
+            pandora::PropertiesMap::const_iterator iter(pfParticlePropertiesMap.find(property));
+
+            if (iter != pfParticlePropertiesMap.end())
+                return true;
+        }
+    }
+    return false;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
