@@ -12,6 +12,7 @@
 #include "larcorealg/Geometry/WireGeo.h"
 
 #include "larpandora/LArPandoraInterface/LArPandoraGeometry.h"
+#include "larpandora/LArPandoraInterface/LArPandoraInput.h"
 
 #include <iomanip>
 #include <set>
@@ -113,15 +114,20 @@ geo::View_t LArPandoraGeometry::GetGlobalView(const unsigned int cstat, const un
     const bool switchUV(LArPandoraGeometry::ShouldSwitchUV(cstat, tpc));
 
     // ATTN This implicitly assumes that there will be u, v and (maybe) one of either w or y views
-    if ((hit_View == geo::kW) || (hit_View == geo::kY))
+    if (hit_View == geo::kW)
     {
         return geo::kW;
     }
-    else if(hit_View == geo::kU)
+    else if (hit_View == geo::kY)
+    {
+        // ATTN: Needs to return kW for non-dp use cases
+        return geo::kY;
+    }
+    else if (hit_View == geo::kU)
     {
         return (switchUV ? geo::kV : geo::kU);
     }
-    else if(hit_View == geo::kV)
+    else if (hit_View == geo::kV)
     {
         return (switchUV ? geo::kU : geo::kV);
     }
@@ -186,15 +192,15 @@ void LArPandoraGeometry::LoadGeometry(LArDriftVolumeList &driftVolumeList)
 
     std::unordered_set<geo::_plane_proj> planeSet;
     for (unsigned int iPlane = 0; iPlane < nWirePlanes; ++iPlane)
-        (void) planeSet.insert(theGeometry->TPC(0, 0).Plane(iPlane).View());
+        (void) planeSet.insert(LArPandoraInput::LArToPandoraView(theGeometry->TPC(0, 0).Plane(iPlane).View()));
 
     if ((nWirePlanes != planeSet.size()) || !planeSet.count(geo::kU) || !planeSet.count(geo::kV) || (planeSet.count(geo::kW) && planeSet.count(geo::kY)))
         throw cet::exception("LArPandora") << " LArPandoraGeometry::LoadGeometry --- expect to find u and v views; if there is one further view, it must be w or y ";
 
     const bool useYPlane((nWirePlanes > 2) && planeSet.count(geo::kY));
 
-    const float wirePitchU(theGeometry->WirePitch(geo::kU));
-    const float wirePitchV(theGeometry->WirePitch(geo::kV));
+    const float wirePitchU(theGeometry->WirePitch(LArPandoraInput::PandoraToLArView(geo::kU)));
+    const float wirePitchV(theGeometry->WirePitch(LArPandoraInput::PandoraToLArView(geo::kV)));
     const float wirePitchW((nWirePlanes < 3) ? 0.5f * (wirePitchU + wirePitchV) : (useYPlane) ? theGeometry->WirePitch(geo::kY) :
         theGeometry->WirePitch(geo::kW));
 
@@ -215,9 +221,12 @@ void LArPandoraGeometry::LoadGeometry(LArDriftVolumeList &driftVolumeList)
             const geo::TPCGeo &theTpc1(theGeometry->TPC(itpc1, icstat));
             cstatList.insert(itpc1);
 
-            const float wireAngleU(0.5f * M_PI - theGeometry->WireAngleToVertical(geo::kU, itpc1, icstat));
-            const float wireAngleV(0.5f * M_PI - theGeometry->WireAngleToVertical(geo::kV, itpc1, icstat));
-            const float wireAngleW((nWirePlanes < 3) ? 0.f : (useYPlane) ? (0.5f * M_PI - theGeometry->WireAngleToVertical(geo::kY, itpc1, icstat)) :
+            // ATTN: Wire angle to vertical needed changing for dual phase approach
+            //const float wireAngleU(0.5f * M_PI - theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kU), itpc1, icstat));
+            const float wireAngleU(theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kU), itpc1, icstat));
+            //const float wireAngleV(0.5f * M_PI - theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kV), itpc1, icstat));
+            const float wireAngleV(theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kV), itpc1, icstat));
+            const float wireAngleW((nWirePlanes < 3) ? std::numeric_limits<float>::epsilon() : (useYPlane) ? (0.5f * M_PI - theGeometry->WireAngleToVertical(geo::kY, itpc1, icstat)) :
                 (0.5f * M_PI - theGeometry->WireAngleToVertical(geo::kW, itpc1, icstat)));
 
             double localCoord1[3] = {0., 0., 0.};
@@ -250,8 +259,8 @@ void LArPandoraGeometry::LoadGeometry(LArDriftVolumeList &driftVolumeList)
                 if (theTpc1.DriftDirection() != theTpc2.DriftDirection())
                     continue;
 
-                const float dThetaU(theGeometry->WireAngleToVertical(geo::kU, itpc1, icstat) - theGeometry->WireAngleToVertical(geo::kU, itpc2, icstat));
-                const float dThetaV(theGeometry->WireAngleToVertical(geo::kV, itpc1, icstat) - theGeometry->WireAngleToVertical(geo::kV, itpc2, icstat));
+                const float dThetaU(theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kU), itpc1, icstat) - theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kU), itpc2, icstat));
+                const float dThetaV(theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kV), itpc1, icstat) - theGeometry->WireAngleToVertical(LArPandoraInput::PandoraToLArView(geo::kV), itpc2, icstat));
                 const float dThetaW((nWirePlanes < 3) ? 0.f : (useYPlane) ? (theGeometry->WireAngleToVertical(geo::kY, itpc1, icstat) - theGeometry->WireAngleToVertical(geo::kY, itpc2, icstat)) :
                     (theGeometry->WireAngleToVertical(geo::kW, itpc1, icstat) - theGeometry->WireAngleToVertical(geo::kW, itpc2, icstat)));
 

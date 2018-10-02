@@ -48,6 +48,20 @@ public:
     };
 
     /**
+     *  @brief  Convert pandora view to expected lar view
+     *
+     *  @param  view to convert
+     */
+    static geo::View_t PandoraToLArView(const geo::View_t view);
+
+    /**
+     *  @brief  Convert lar view to expected pandora view
+     *
+     *  @param  view to convert
+     */
+    static geo::View_t LArToPandoraView(const geo::View_t view);
+
+    /**
      *  @brief  Create the Pandora 2D hits from the ART hits
      *
      *  @param  settings the settings

@@ -38,6 +38,48 @@
 namespace lar_pandora
 {
 
+geo::View_t LArPandoraInput::LArToPandoraView(const geo::View_t view)
+{
+    const bool dualPhase(true);
+
+    if (!dualPhase)
+    {
+        return view;
+    }
+    else if (view == geo::kZ)
+    {
+        return geo::kU;
+    }
+    else if (view == geo::kY)
+    {
+        return geo::kV;
+    }
+    return view;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+geo::View_t LArPandoraInput::PandoraToLArView(const geo::View_t view)
+{
+    const bool dualPhase(true);
+
+    if (!dualPhase)
+    {
+        return view;
+    }
+    else if (view == geo::kU)
+    {
+        return geo::kZ;
+    }
+    else if (view == geo::kV)
+    {
+        return geo::kY;
+    }
+    return view;
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
 void LArPandoraInput::CreatePandoraHits2D(const Settings &settings, const LArDriftVolumeMap &driftVolumeMap, const HitVector &hitVector, IdToHitMap &idToHitMap)
 {
     mf::LogDebug("LArPandora") << " *** LArPandoraInput::CreatePandoraHits2D(...) *** " << std::endl;
@@ -107,7 +149,7 @@ void LArPandoraInput::CreatePandoraHits2D(const Settings &settings, const LArDri
             caloHitParameters.m_pParentAddress = (void*)((intptr_t)(++hitCounter));
             caloHitParameters.m_larTPCVolumeId = LArPandoraGeometry::GetVolumeID(driftVolumeMap, hit_WireID.Cryostat, hit_WireID.TPC);
 
-            const geo::View_t pandora_View(LArPandoraGeometry::GetGlobalView(hit_WireID.Cryostat, hit_WireID.TPC, hit_View));
+            const geo::View_t pandora_View(LArPandoraInput::LArToPandoraView(LArPandoraGeometry::GetGlobalView(hit_WireID.Cryostat, hit_WireID.TPC, hit_View)));
 
             if (pandora_View == geo::kW)
             {
@@ -318,7 +360,7 @@ void LArPandoraInput::CreatePandoraReadoutGaps(const Settings &settings, const L
                         }
 
                         const geo::View_t iview = (geo::View_t)iplane;
-                        const geo::View_t pandoraView(LArPandoraGeometry::GetGlobalView(icstat, itpc, iview));
+                        const geo::View_t pandoraView(LArPandoraInput::LArToPandoraView(LArPandoraGeometry::GetGlobalView(icstat, itpc, iview)));
 
                         if (pandoraView == geo::kW)
                         {
