@@ -1,5 +1,6 @@
 include_directories( $ENV{PANDORA_INC} )
 include_directories( $ENV{LARPANDORACONTENT_INC} )
+include_directories( $ENV{DUNETPC_INC} )
 
 art_make( 
           LIB_LIBRARIES larcorealg_Geometry
@@ -20,6 +21,7 @@ art_make(
                         LArPandoraContent
                         larpandoraobj
                         nusimdata_SimulationBase
+                        dune_DuneObj
                         ${ART_FRAMEWORK_CORE}
                         ${ART_FRAMEWORK_PRINCIPAL}
                         ${ART_FRAMEWORK_SERVICES_REGISTRY}

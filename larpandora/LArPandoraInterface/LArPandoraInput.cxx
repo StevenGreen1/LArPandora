@@ -253,6 +253,8 @@ void LArPandoraInput::CreatePandoraDetectorGaps(const Settings &settings, const 
 
 void LArPandoraInput::CreatePandoraReadoutGaps(const Settings &settings, const LArDriftVolumeMap &driftVolumeMap)
 {
+std::cout << "LArPandoraInput::CreatePandoraReadoutGaps" << std::endl;
+int nGaps(0);
     mf::LogDebug("LArPandora") << " *** LArPandoraInput::CreatePandoraReadoutGaps(...) *** " << std::endl;
 
     if (!settings.m_pPrimaryPandora)
@@ -357,6 +359,7 @@ void LArPandoraInput::CreatePandoraReadoutGaps(const Settings &settings, const L
                     try
                     {
                         PANDORA_THROW_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraApi::Geometry::LineGap::Create(*pPandora, parameters));
+nGaps++;
                     }
                     catch (const pandora::StatusCodeException &)
                     {
@@ -367,6 +370,8 @@ void LArPandoraInput::CreatePandoraReadoutGaps(const Settings &settings, const L
             }
         }
     }
+std::cout << "Number of gaps created : " << nGaps << std::endl;
+std::cout << "LArPandoraInput::CreatePandoraReadoutGaps - End" << std::endl;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -660,6 +665,52 @@ void LArPandoraInput::CreatePandoraMCLinks2D(const Settings &settings, const IdT
                 mf::LogWarning("LArPandora") << "CreatePandoraMCLinks2D - unable to create calo hit to mc particle relationship, invalid information supplied " << std::endl;
                 continue;
             }
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void LArPandoraInput::CreatePandoraTriggerMCParticle(const Settings &settings, const LArPandoraHelper::TriggerInformation &triggerInformation)
+{
+    lar_content::LArMCParticleFactory mcParticleFactory;
+    lar_content::LArMCParticleParameters mcParticleParameters;
+    const pandora::Pandora *pPandora(settings.m_pPrimaryPandora);
+
+    if (triggerInformation.m_isTriggerActive)
+    {
+        try
+        {
+            mcParticleParameters.m_nuanceCode = 0;
+std::cout << "triggerInformation.m_beamMomentum " << triggerInformation.m_beamMomentum << std::endl;
+            mcParticleParameters.m_energy = triggerInformation.m_beamMomentum;
+std::cout << "2" << std::endl;
+            mcParticleParameters.m_momentum = pandora::CartesianVector(triggerInformation.m_beamDirectionX, triggerInformation.m_beamDirectionY, triggerInformation.m_beamDirectionZ);
+std::cout << "3" << std::endl;
+            mcParticleParameters.m_vertex = pandora::CartesianVector(triggerInformation.m_beamPositionX, triggerInformation.m_beamPositionY, triggerInformation.m_beamPositionZ);
+std::cout << "4" << std::endl;
+            mcParticleParameters.m_endpoint = pandora::CartesianVector(triggerInformation.m_tof, static_cast<float>(triggerInformation.m_ckov0Status), static_cast<float>(triggerInformation.m_ckov1Status));
+std::cout << "5" << std::endl;
+            mcParticleParameters.m_particleId = 211;
+std::cout << "6" << std::endl;
+            mcParticleParameters.m_mcParticleType = pandora::MC_3D;
+std::cout << "7" << std::endl;
+            mcParticleParameters.m_pParentAddress = nullptr;
+        }
+        catch (const pandora::StatusCodeException &)
+        {
+            mf::LogWarning("LArPandora") << "CreatePandoraTriggerMCParticle - invalid trigger mc particle parameters provided, trigger mc particle omitted " << std::endl;
+            return;
+        }
+
+        try
+        {
+            PANDORA_THROW_RESULT_IF(pandora::STATUS_CODE_SUCCESS, !=, PandoraApi::MCParticle::Create(*pPandora, mcParticleParameters, mcParticleFactory));
+        }
+        catch (const pandora::StatusCodeException &)
+        {
+            mf::LogWarning("LArPandora") << "CreatePandoraTriggerMCParticle - unable to create trigger mc particle, insufficient or invalid information supplied " << std::endl;
+            return;
         }
     }
 }
