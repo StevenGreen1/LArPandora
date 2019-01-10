@@ -14,6 +14,7 @@
 #include "lardataobj/AnalysisBase/T0.h"
 #include "lardataobj/AnalysisBase/CosmicTag.h"
 #include "lardataobj/AnalysisBase/BackTrackerMatchingData.h"
+#include "lardataobj/RawData/RDTimeStamp.h"
 #include "lardataobj/RecoBase/Hit.h"
 #include "lardataobj/RecoBase/Cluster.h"
 #include "lardataobj/RecoBase/PFParticle.h"
@@ -27,6 +28,8 @@
 #include "lardataobj/RecoBase/Slice.h"
 #include "nusimdata/SimulationBase/MCParticle.h"
 #include "nusimdata/SimulationBase/MCTruth.h"
+
+#include "dune/DuneObj/ProtoDUNEBeamEvent.h"
 
 #include "larcore/Geometry/Geometry.h"
 #include "larcoreobj/SimpleTypesAndConstants/RawTypes.h"
@@ -510,6 +513,71 @@ void LArPandoraHelper::CollectVertices(const art::Event &evt, const std::string 
         {
             const art::Ptr<recob::PFParticle> particle = particles.at(j);
             particlesToVertices[particle].push_back(vertex);
+        }
+    }
+}
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+void LArPandoraHelper::CollectTriggerInformation(const art::Event &evt, TriggerInformation &triggerInformation)
+{
+    // Check the trigger is active
+    art::Handle<std::vector<raw::RDTimeStamp>> timeStamps;
+    evt.getByLabel("timingrawdecoder","daq",timeStamps);
+
+    if (!timeStamps.isValid() || timeStamps->size() > 1)
+    {
+        triggerInformation.m_isTriggerActive = false;
+    }
+    else
+    {
+        const raw::RDTimeStamp& timeStamp = timeStamps->at(0);
+        triggerInformation.m_isTriggerActive = (timeStamp.GetFlags() == 0xc);
+    }
+
+    art::Handle< std::vector<beam::ProtoDUNEBeamEvent> > pdbeamHandle;
+    std::vector< art::Ptr<beam::ProtoDUNEBeamEvent> > beaminfo;
+
+    if (evt.getByLabel("beamevent", pdbeamHandle))
+        art::fill_ptr_vector(beaminfo, pdbeamHandle);
+
+    if (beaminfo.size() == 1)
+    {
+        if (beaminfo.at(0)->GetTimingTrigger() == 12)
+        {
+            if (beaminfo.at(0)->CheckIsMatched())
+            {
+                //Get TOF info
+                if (beaminfo.at(0)->GetTOFChan() != -1)
+                {
+                    //if TOFChan == -1, then there was not a successful match, if it's 0, 1, 2, or 3, then there was a good match corresponding to the different pair-wise combinations of the upstream and downstream channels
+                    triggerInformation.m_tof = beaminfo.at(0)->GetTOF();
+                }
+
+                //Get beam particle trajectory info
+                auto &tracks = beaminfo.at(0)->GetBeamTracks();
+
+                if (tracks.size() == 1)
+                {
+                    triggerInformation.m_beamPositionX = tracks.at(0).End().X();
+                    triggerInformation.m_beamPositionY = tracks.at(0).End().Y();
+                    triggerInformation.m_beamPositionZ = tracks.at(0).End().Z();
+                    triggerInformation.m_beamDirectionX = tracks.at(0).StartDirection().X();
+                    triggerInformation.m_beamDirectionY = tracks.at(0).StartDirection().Y();
+                    triggerInformation.m_beamDirectionZ = tracks.at(0).StartDirection().Z();
+
+                    //Get reconstructed beam momentum info
+                    auto &recoBeamMomenta = beaminfo.at(0)->GetRecoBeamMomenta();
+                    triggerInformation.m_beamMomentum = (recoBeamMomenta.size() == 1 ? recoBeamMomenta.at(0) : std::numeric_limits<double>::max());
+                }
+            }
+        }
+
+        if (beaminfo.at(0)->GetBITrigger() == 1)
+        {
+            //Get CKov status
+            triggerInformation.m_ckov0Status = beaminfo.at(0)->GetCKov0Status();
+            triggerInformation.m_ckov1Status = beaminfo.at(0)->GetCKov1Status();
         }
     }
 }
@@ -1394,5 +1462,23 @@ template void LArPandoraHelper::GetAssociatedHits(const art::Event &, const std:
 
 template void LArPandoraHelper::GetAssociatedHits(const art::Event &, const std::string &, const std::vector<art::Ptr<recob::SpacePoint> > &,
     HitVector &, const pandora::IntVector* const);
+
+//------------------------------------------------------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------------------------------
+
+LArPandoraHelper::TriggerInformation::TriggerInformation() :
+    m_isTriggerActive(false),
+    m_beamMomentum(std::numeric_limits<float>::max()),
+    m_beamPositionX(std::numeric_limits<float>::max()),
+    m_beamPositionY(std::numeric_limits<float>::max()),
+    m_beamPositionZ(std::numeric_limits<float>::max()),
+    m_beamDirectionX(std::numeric_limits<float>::max()),
+    m_beamDirectionY(std::numeric_limits<float>::max()),
+    m_beamDirectionZ(std::numeric_limits<float>::max()),
+    m_tof(std::numeric_limits<float>::max()),
+    m_ckov0Status(std::numeric_limits<int>::max()),
+    m_ckov1Status(std::numeric_limits<int>::max())
+{
+}
 
 } // namespace lar_pandora

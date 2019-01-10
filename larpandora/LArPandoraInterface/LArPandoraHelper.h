@@ -103,6 +103,27 @@ public:
         kAddDaughters = 2        // Absorb daughter particles into parent particles
     };
 
+    class TriggerInformation
+    {
+    public:
+        /**
+         *  @brief  Default constructor
+         */
+        TriggerInformation();
+
+        bool    m_isTriggerActive;    ///< Has the trigger been activated
+        float   m_beamMomentum;       ///< Beam momentum
+        float   m_beamPositionX;      ///< Beam position x
+        float   m_beamPositionY;      ///< Beam position y
+        float   m_beamPositionZ;      ///< Beam position z
+        float   m_beamDirectionX;     ///< Beam direction x
+        float   m_beamDirectionY;     ///< Beam direction y
+        float   m_beamDirectionZ;     ///< Beam direction z
+        float   m_tof;                ///< Time of flight
+        int     m_ckov0Status;        ///< Cherenkov detector 0 status
+        int     m_ckov1Status;        ///< Cherenkov detector 1 status
+    };
+
     /**
      *  @brief Collect the reconstructed wires from the ART event record
      *
@@ -273,6 +294,14 @@ public:
      */
     static void CollectVertices(const art::Event &evt, const std::string &label, VertexVector &vertexVector,
         PFParticlesToVertices &particlesToVertices);
+
+    /**
+     *  @brief Collect the trigger information
+     *
+     *  @param evt the ART event record
+     *  @param triggerInformation information to save
+     */
+    static void CollectTriggerInformation(const art::Event &evt, TriggerInformation &triggerInformation);
 
     /**
      *  @brief Build mapping between PFParticles and Hits using PFParticle/SpacePoint/Hit maps

@@ -118,6 +118,14 @@ public:
      */
     static void CreatePandoraMCLinks2D(const Settings &settings, const HitMap &hitMap, const HitsToTrackIDEs &hitToParticleMap);
 
+    /**
+     *  @brief  Create a fake MC particle representing the trigger information
+     *
+     *  @param  settings the settings
+     *  @param  triggerInformation the trigger information
+     */
+    static void CreatePandoraTriggerMCParticle(const Settings &settings, const LArPandoraHelper::TriggerInformation &triggerInformation);
+
 private:
     /**
      *  @brief  Loop over MC trajectory points and identify start and end points within the detector
